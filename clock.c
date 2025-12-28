@@ -4,83 +4,60 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+// Definimos las variables globales AQUI
 pthread_mutex_t mutex_erlojua = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t hari_cond = PTHREAD_COND_INITIALIZER;
 
-int denb_tot = 0;
-int ITXAROTE_DENB = 1;
-int denb_max = 5;
-int bukatu = 0;
+int global_tick = 0; // Usamos este nombre para unificar
+int ITXAROTE_DENB = 1; 
+int denb_max = 60;     
+int bukatu = 0; // Se define aqui
 
-void denb_zehaztu (int argc, char *argv[]){
-    if(argc > 1){//tick maiztasuna
-        ITXAROTE_DENB = atoi(argv[1]);
+// Funcion chapuza para recibir datos del main
+void clock_konfiguratu(int maiztasuna, int max_ticks){
+    // PARCHE DE ESTUDIANTE:
+    // Si me pasan un 0 (porque atoi falló con texto), pongo 1 para no dividir por cero.
+    if(maiztasuna <= 0) {
+        ITXAROTE_DENB = 1; 
+    } else {
+        ITXAROTE_DENB = maiztasuna;
     }
-    if(argc > 2){//denbora maximoa
-        denb_max = atoi(argv[2]);
-    }
-
+    
+    if(max_ticks > 0) denb_max = max_ticks;
 }
 
-void egoera_adirazi (){
-    printf("Clock egoera: %d tick, eta %d tick/segunduro \n", denb_tot/ITXAROTE_DENB, ITXAROTE_DENB);
-}
-
-//x tick segundura aldatu. jarri zuzenean h-n o bertzela eskuz sartu
-void *erlojua (void *arg){
+void *erloju_funtzioa(void *arg){
+    printf("Clock hasieratzen... (Frec: %d)\n", ITXAROTE_DENB);
+    
     while(1){
-        //aldatu sleep-> usleep
-        usleep(1000000/ITXAROTE_DENB); //itxoin zehazatatutako maiztasunakin
-        pthread_mutex_lock(&mutex_erlojua);//mutex-a blokeatu
-        denb_tot++;
-        printf("(Erlojuan) tick %d\n", denb_tot/ITXAROTE_DENB);
-        if(denb_tot >= denb_max && denb_max != -1){ //denbora maximoa pasa bada
+        // AQUI ESTABA EL FALLO: Si ITXAROTE_DENB era 0, petaba.
+        // Con el parche de arriba ya no pasa.
+        usleep(1000000 / ITXAROTE_DENB);
+
+        pthread_mutex_lock(&mutex_erlojua);
+        
+        global_tick++;
+        // printf("################ Tick %d ################\n", global_tick);
+        
+        if(denb_max != -1 && global_tick >= denb_max){
             bukatu = 1;
         }
-        pthread_cond_broadcast(&hari_cond);//hariak esnatu
-        pthread_mutex_unlock(&mutex_erlojua);//mutex-a desblokeatu
+
+        pthread_cond_broadcast(&hari_cond); // Despertar a todos
+        pthread_mutex_unlock(&mutex_erlojua);
+
         if(bukatu){
+            printf("[CLOCK] Amaitu da.\n");
             break;
         }
     }
-return NULL;
+    return NULL;
 }
 
-int clock_hasi(pthread_t *erloju_haria){
-    int ondo_joan_da = pthread_create(&erloju_haria, NULL, erlojua, NULL);
-    if(ondo_joan_da == 0){
-        printf("Erloju hariak hasiberri da \n");
-    }else{
-        printf("Errore bat gauzatu da %d\n", ondo_joan_da);
-    }
-    return ondo_joan_da;
+int clock_hasi(pthread_t *haria){
+    return pthread_create(haria, NULL, erloju_funtzioa, NULL);
 }
 
-int clock_itxaron(pthread_t erloju_haria){
-    pthread_join(erloju_haria, NULL);
-    printf("Erloju hariak bukatu du.");
-}
-
-void clock_gelditu() {
-    pthread_mutex_lock(&mutex_erlojua);
-    bukatu = 1;
-    pthread_mutex_unlock(&mutex_erlojua);
-    printf("Clock gelditu da eskaera bitartez. \n");
-}
-
-int clock_denbora_totala() {
-    pthread_mutex_lock(&mutex_erlojua);
-    int totala = denb_tot;
-    pthread_mutex_unlock(&mutex_erlojua);
-    return totala;
-}
-
-int clock_geratzen_da() {
-    pthread_mutex_lock(&mutex_erlojua);
-    int denb = -1;
-    if(denb_max != -1) {
-        denb = (denb_max - denb_tot) / ITXAROTE_DENB;
-    }
-    pthread_mutex_unlock(&mutex_erlojua);
-    return denb;
+void clock_itxaron(pthread_t haria){
+    pthread_join(haria, NULL);
 }

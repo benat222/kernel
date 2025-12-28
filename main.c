@@ -1,58 +1,63 @@
 #include "config.h"
 #include <pthread.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h> 
 
-// ==================== EXTERNOAK ====================
-// Clock
-extern void denb_zehaztu(int argc, char *argv[]);
-extern int clock_hasi(pthread_t *erloju_haria);
-extern void clock_itxaron(pthread_t erloju_haria);
-extern int clock_denbora_totala();
+// Variables globales externas
+PCB *current_process = NULL;
+int CPU_PC = 0;
+int CPU_REGS[4] = {0};
+PolicyType current_policy = HRRN; // Defecto
 
-// Timer
-extern int timer_hasi(pthread_t *timer_haria, int freq, int max_ticks);
-extern void timer_itxaron(pthread_t timer_haria);
-
-// ==================== PROGRAMA NAGUSIA ====================
 int main(int argc, char *argv[]) {
-    printf("CLOCK + TIMER SISTEMA - HASIERA\n");
+    printf("KERNEL SIMULATZAILEA - Fase 2\n");
 
-    // --- Configurar y arrancar el clock ---
-    denb_zehaztu(argc, argv);
-
-    pthread_t clock_haria;
-    if(clock_hasi(&clock_haria) != 0){
-        return 1;
+    int clock_hz = 1;       
+    int max_ticks = 60;     
+    
+    // --- LECTURA DE ARGUMENTOS (Estilo libre) ---
+    // Recorremos los argumentos buscando palabras clave o numeros
+    for(int i=1; i<argc; i++) {
+        
+        // Comprobamos si es la politica
+        if (strcasecmp(argv[i], "equ") == 0) {
+            current_policy = EQUALIZER;
+            printf(" -> Politika aldatuta: EQUALIZER (equ)\n");
+        }
+        else if (strcasecmp(argv[i], "HRRN") == 0) {
+            current_policy = HRRN;
+            printf(" -> Politika aldatuta: HRRN\n");
+        }
+        else {
+            // Si no es texto, asumimos que es un numero (Hz)
+            int val = atoi(argv[i]);
+            if (val > 0) {
+                clock_hz = val;
+                printf(" -> Maiztasuna: %d Hz\n", clock_hz);
+            }
+            // Si atoi devuelve 0 (porque era texto basura), el parche del clock lo arreglará
+        }
     }
-    printf("Clock martxan...\n");
 
-    // --- Timer 1 ---
-    pthread_t timer1_haria;
-    int freq_timer1 = 5;
-    int max_ticks_timer1 = 5;
-    printf("Timer 1 martxan...\n");
-    timer_hasi(&timer1_haria, freq_timer1, max_ticks_timer1);
-    timer_itxaron(timer1_haria);
-    printf("Timer 1 amaitu da.\n");
+    // Configurar clock
+    clock_konfiguratu(clock_hz, max_ticks);
 
-    // --- Timer 2 ---
-    pthread_t timer2_haria;
-    int freq_timer2 = 5;
-    int max_ticks_timer2 = 5;
-    printf("Timer 2 martxan...\n");
-    timer_hasi(&timer2_haria, freq_timer2, max_ticks_timer2);
-    timer_itxaron(timer2_haria);
-    printf("Timer 2 amaitu da.\n");
+    pthread_t clock_th, timer1_th, gen_th, sched_th, cpu_th;
 
-    // --- Esperar a que termine el clock ---
-    clock_itxaron(clock_haria);
-    printf("Clock amaitu da.\n");
+    // Arrancar hilos
+    scheduler_hasi(&sched_th);
+    generator_hasi(&gen_th);
+    cpu_hasi(&cpu_th);
+    
+    // Timer para interrumpir cada 3 ticks (aunque HRRN lo ignore por el fallo)
+    timer_hasi(&timer1_th, 1, 3); 
+    
+    clock_hasi(&clock_th);
 
-    // --- Estado final ---
-    printf("\nPROGRAMA AMAITUTA\n");
-    printf("Denbora totala: %d tick\n", clock_denbora_totala());
+    clock_itxaron(clock_th);
 
+    // Salida sucia
     return 0;
 }

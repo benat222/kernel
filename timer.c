@@ -1,59 +1,61 @@
 #include "config.h"
 #include <pthread.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 
+// Variables externas del Clock y Globales
+extern pthread_mutex_t mutex_erlojua;
+extern pthread_cond_t hari_cond; // Asegúrate de usar la correcta
+extern int global_tick; 
+extern int bukatu;
+
+// Variables propias del Timer
 pthread_mutex_t mutex_timer = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_timer = PTHREAD_COND_INITIALIZER;
+pthread_cond_t cond_timer_interrupt = PTHREAD_COND_INITIALIZER;
 
-static int timer_stop_flag = 0;
-
-// ----------------- HILO DEL TIMER -----------------
 typedef struct {
-    int freq;       // ticks por segundo
-    int max_ticks;  // máximo de ticks
-} t_arg;
+    int id;         
+    int maiztasuna; 
+} timer_args;
 
-static void *timer_thread(void *arg) {
-    t_arg *a = (t_arg*)arg;
-    int tick = 0;
-    int usleep_time = 1000000 / a->freq;
+void *timer_funtzioa(void *arg){
+    timer_args *args = (timer_args*)arg;
+    int tick_kontagailua = 0; // Variable bien declarada
 
-    while (!timer_stop_flag && tick < a->max_ticks) {
-        usleep(usleep_time);
+    printf("Timer %d aktibatuta (%d tickero)\n", args->id, args->maiztasuna);
 
-        tick++;
-        printf("Timer tick %d\n", tick);
+    while(1){
+        // 1. ERLOJUAREN ZAIN EGON
+        pthread_mutex_lock(&mutex_erlojua);
+        pthread_cond_wait(&hari_cond, &mutex_erlojua);
+        
+        if(bukatu){
+            pthread_mutex_unlock(&mutex_erlojua);
+            break;
+        }
+        pthread_mutex_unlock(&mutex_erlojua);
 
-        // Avisar a hilos que esperan (si es necesario)
-        pthread_mutex_lock(&mutex_timer);
-        pthread_cond_broadcast(&cond_timer);
-        pthread_mutex_unlock(&mutex_timer);
-    }
+        // 2. KUDEATU
+        tick_kontagailua++; // Incremento correcto
 
-    free(a); // liberar memoria
+        // AQUI ES DONDE TE DABA EL ERROR ANTES
+        if(tick_kontagailua >= args->maiztasuna){ 
+            
+            pthread_mutex_lock(&mutex_timer);
+            pthread_cond_broadcast(&cond_timer_interrupt); // Avisar al Scheduler
+            pthread_mutex_unlock(&mutex_timer);
+            
+            tick_kontagailua = 0; 
+        }
+    } // Cierre del while
+    
+    free(args);
     return NULL;
-}
+} // Cierre de la funcion
 
-// ----------------- API DEL TIMER -----------------
-int timer_hasi(pthread_t *timer_haria, int freq, int max_ticks) {
-    t_arg *arg = malloc(sizeof(t_arg));
-    if (!arg) return -1;
-
-    arg->freq = freq;
-    arg->max_ticks = max_ticks;
-
-    return pthread_create(timer_haria, NULL, timer_thread, arg);
-}
-
-void timer_stop() {
-    pthread_mutex_lock(&mutex_timer);
-    timer_stop_flag = 1;
-    pthread_cond_broadcast(&cond_timer);
-    pthread_mutex_unlock(&mutex_timer);
-}
-
-void timer_itxaron(pthread_t timer_haria) {
-    pthread_join(timer_haria, NULL);
+int timer_hasi(pthread_t *haria, int id, int maiztasuna){
+    timer_args *args = malloc(sizeof(timer_args));
+    args->id = id;
+    args->maiztasuna = maiztasuna;
+    return pthread_create(haria, NULL, timer_funtzioa, args);
 }
